@@ -1,13 +1,19 @@
 #!/bin/bash
 ip route add 10.0.0.0/16 via 10.1.0.2 dev eth0
-echo '10.0.0.21 insec' >> /etc/hosts
-echo '10.1.0.21 sec' >> /etc/hosts
+
+echo "$INSECURENET_HOST_IP insec" >> /etc/hosts
+echo "$SECURENET_HOST_IP sec" >> /etc/hosts
 
 
 sysctl net.ipv4.ip_forward=0
 sysctl -p
 
-systemctl start nftables.service
+#systemctl start nftables.service
+
+#ip link set dev eth0 down
+#ip link set dev eth0 address 02:42:0A:01:00:15
+#ip link set dev eth0 up
+
 
 ethtool --offload eth0 tx off
 nft add table input_table 

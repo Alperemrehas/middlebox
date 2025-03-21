@@ -108,6 +108,8 @@ bool configureRawSockets();
 bool configure_nats();
 char *get_interface_for_subnet(char *subnet);
 void query_mac_address(char *interface, char *host_ip, unsigned char *mac_address);
+void query_mac_address_with_arp(char *interface, char *host_ip, unsigned char *mac_address);
+void query_mac_address_with_arp_query(char *interface, char *host_ip, unsigned char *mac_address);
 void print_packet(unsigned char *buffer, int size, char *iface, bool is_outgoing);
 
 // NOT A GOOD EXERCISE TO USE GLOBAL VARIABLES
@@ -308,8 +310,8 @@ bool configure_switch(){
     printf("Interface for insecure subnet (%s): %s\n", insecure_net_subnet, ethinsec);
 
     // Query the MAC address of secure_net_host_ip    
-    query_mac_address(ethsec, secure_net_host_ip, mac_secure_net_host);
-    query_mac_address(ethinsec, insecure_net_host_ip, mac_insecure_net_host);
+    query_mac_address_with_arp_query(ethsec, secure_net_host_ip, mac_secure_net_host);
+    query_mac_address_with_arp_query(ethinsec, insecure_net_host_ip, mac_insecure_net_host);
 
     printf("MAC address of (%s): %02x:%02x:%02x:%02x:%02x:%02x\n",
         secure_net_host_ip,
@@ -452,6 +454,81 @@ char *get_interface_for_subnet(char *subnet) {
 
     pclose(fp);
     return interface;
+}
+
+void query_mac_address_with_arp_query(char *interface, char *host_ip, unsigned char *mac_address) {
+    int sock;
+    struct sockaddr_in target;
+    struct arpreq req;
+    struct sockaddr_in *sin;
+
+    // Create a socket
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    // Set up the target address
+    memset(&target, 0, sizeof(target));
+    target.sin_family = AF_INET;
+    inet_pton(AF_INET, host_ip, &target.sin_addr);
+
+    // Set up the ARP request
+    memset(&req, 0, sizeof(req));
+    sin = (struct sockaddr_in *)&req.arp_pa;
+    sin->sin_family = AF_INET;
+    sin->sin_addr = target.sin_addr;
+    strncpy(req.arp_dev, interface, IFNAMSIZ - 1);
+
+    // Perform the ARP query
+    if (ioctl(sock, SIOCGARP, &req) < 0) {
+        perror("ARP query failed");
+        close(sock);
+        exit(1);
+    }
+    memcpy(mac_address, req.arp_ha.sa_data, 6);
+    printf("Queried MAC address for %s on interface %s: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        host_ip, interface,
+        mac_address[0], mac_address[1], mac_address[2],
+        mac_address[3], mac_address[4], mac_address[5]);
+    // Copy the MAC address
+
+    close(sock);
+}
+
+void query_mac_address_with_arp_cache(char *interface, char *host_ip, unsigned char *mac_address) {
+    FILE *arp_cache = fopen("/proc/net/arp", "r");
+    if (!arp_cache) {
+        perror("Failed to open ARP cache");
+        exit(1);
+    }
+
+    char line[256];
+    bool found = false;
+
+    // Skip the header line
+    fgets(line, sizeof(line), arp_cache);
+
+    while (fgets(line, sizeof(line), arp_cache)) {
+        char ip[INET_ADDRSTRLEN], hw_type[8], flags[8], mac[18], mask[8], dev[IFNAMSIZ];
+        if (sscanf(line, "%s %s %s %s %s %s", ip, hw_type, flags, mac, mask, dev) == 6) {
+            if (strcmp(ip, host_ip) == 0 && strcmp(dev, interface) == 0) {
+                sscanf(mac, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+                       &mac_address[0], &mac_address[1], &mac_address[2],
+                       &mac_address[3], &mac_address[4], &mac_address[5]);
+                found = true;
+                break;
+            }
+        }
+    }
+
+    fclose(arp_cache);
+
+    if (!found) {
+        fprintf(stderr, "MAC address for IP %s on interface %s not found in ARP cache\n", host_ip, interface);
+        exit(1);
+    }
 }
 
 // This is how docker assigns mac addresses to interfaces
