@@ -1,0 +1,31 @@
+Sniffing for covert channel packets on interface eth0...
+Received packet with IP ID: 83 (character: S)
+Received packet with modified IP ID (out of ASCII range): 53429
+Received packet with IP ID: 101 (character: e)
+Received packet with modified IP ID (out of ASCII range): 53782
+Received packet with IP ID: 99 (character: c)
+Received packet with modified IP ID (out of ASCII range): 54936
+Received packet with IP ID: 114 (character: r)
+Received packet with modified IP ID (out of ASCII range): 55027
+Received packet with IP ID: 101 (character: e)
+Received packet with modified IP ID (out of ASCII range): 56213
+Received packet with IP ID: 116 (character: t)
+Received packet with modified IP ID (out of ASCII range): 57047
+Received packet with IP ID: 58 (character: :)
+Received packet with modified IP ID (out of ASCII range): 57705
+Received packet with IP ID: 32 (character:  )
+Received packet with modified IP ID (out of ASCII range): 58532
+Received packet with IP ID: 79 (character: O)
+Received packet with modified IP ID (out of ASCII range): 59694
+Received packet with IP ID: 112 (character: p)
+Received packet with modified IP ID (out of ASCII range): 61251
+Received packet with IP ID: 101 (character: e)
+Received packet with modified IP ID (out of ASCII range): 62168
+Received packet with IP ID: 114 (character: r)
+Received packet with modified IP ID (out of ASCII range): 62658
+Received packet with IP ID: 97 (character: a)
+Received packet with modified IP ID (out of ASCII range): 62725
+Received packet with IP ID: 116 (character: t)
+
+=== Covert Message Received ===
+Secret: Operat
