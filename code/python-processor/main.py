@@ -1,6 +1,7 @@
 import asyncio
 from nats.aio.client import Client as NATS
-import os, random
+import os
+import random
 from scapy.all import Ether
 
 # Set the mean delay in milliseconds.
