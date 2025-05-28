@@ -21,7 +21,7 @@ SENDER_CMD = [
 
 # Verify Phase 2 ran
 if not os.path.isfile(PHASE2_CSV):
-    print(f"❗ Phase 2 results not found at {PHASE2_CSV}. Please run Phase 2 first.")
+    print(f"Phase 2 results not found at {PHASE2_CSV}. Please run Phase 2 first.")
     exit(1)
 
 # create a single timestamped folder, then subfolders "0/" and "1/"
@@ -44,22 +44,22 @@ for mode in ("0", "1"):
     ], check=True)
 
     # steady ping + (maybe) covert sender
-    print("⏳  Starting ping from sec→insec…")
+    print("Starting ping from sec→insec…")
     ping_proc = subprocess.Popen(PING_CMD, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if mode == "1":
-        print("🚨  Launching covert sender…")
+        print("Launching covert sender…")
         covert_proc = subprocess.Popen(SENDER_CMD, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    print(f"⏱  Sleeping {WINDOW_SLEEP}s to collect detection windows…")
+    print(f"Sleeping {WINDOW_SLEEP}s to collect detection windows…")
     time.sleep(WINDOW_SLEEP)
 
     # tear down
-    print("🔪  Stopping ping (and covert sender)…")
+    print("Stopping ping (and covert sender)…")
     ping_proc.terminate()
     if mode == "1":
         covert_proc.terminate()
 
-    print("🔪  Stopping detector inside container…")
+    print("Stopping detector inside container…")
     subprocess.run([
         "docker","exec","python-processor",
         "bash","-lc",
@@ -79,7 +79,7 @@ for mode in ("0", "1"):
     )
 
     host_csv = os.path.join(mode_dir, "detection_metrics.csv")
-    print("📥  Copying detection metrics…")
+    print("Copying detection metrics…")
     subprocess.run([
         "docker","cp",
         f"python-processor:{container_csv}",
@@ -87,9 +87,9 @@ for mode in ("0", "1"):
     ], check=False)
 
     if not os.path.isfile(host_csv):
-        print(f"❌  No detection metrics at {host_csv}; skipping.")
+        print(f"No detection metrics at {host_csv}; skipping.")
         continue
-    print(f"✅  Metrics saved to {host_csv}")
+    print(f"Metrics saved to {host_csv}")
 
     # load it
     with open(host_csv, newline="") as f:
@@ -161,6 +161,6 @@ for mode in ("0", "1"):
     plt.savefig(os.path.join(mode_dir, "f1_score.png"), dpi=150)
     plt.close()
 
-    print(f"📊  Plots saved under {mode_dir}")
+    print(f"Plots saved under {mode_dir}")
 
 print("\n=== Phase 3 Detection Testing Complete ===")
