@@ -9,13 +9,13 @@ from scapy.all import Ether, IP
 
 # --- Phase 3 Heuristic Detector Parameters ---
 WINDOW_SIZE = 20
-MARKER = b"CovertChannel"
+MARKER = b"CovertChannel"  # what we look for
 
 # --- Detection Metrics Counters ---
 TP = FP = TN = FN = 0
-packet_window = []  # list of tuples: (timestamp, is_marker, true_label)
+packet_window = []  # list of tuples: (timestamp, is_marker)
 
-# --- Output Setup: one subfolder per run under TPPhase3_results ---
+# --- Output Setup: one timestamped subfolder per run ---
 BASE_RESULTS_DIR = "TPPhase3_results"
 timestamp = time.strftime("%Y%m%d-%H%M%S")
 results_dir = os.path.join(BASE_RESULTS_DIR, timestamp)
@@ -29,12 +29,12 @@ with open(csv_path, "w", newline="") as f:
         "window_end", "TP", "FP", "TN", "FN", "Precision", "Recall", "F1"
     ])
 
-# --- Phase 1 Delay Parameter (unchanged) ---
+# (unchanged) artificial delay before forwarding
 MEAN_DELAY_MS = 200
 
 def analyze_window():
-    """Return True if any packet in the current window carries our marker."""
-    return any(is_marker for (_, is_marker, _) in packet_window)
+    """Return True if *any* packet in the current window carries our marker."""
+    return any(is_marker for (_, is_marker) in packet_window)
 
 async def run():
     global TP, FP, TN, FN, packet_window
@@ -50,23 +50,20 @@ async def run():
         data = msg.data
         pkt = Ether(data)
 
-        # Ground truth: was the covert channel active?
-        covert_active = (os.getenv("COVERT_ACTIVE", "0") == "1")
-
         if IP in pkt:
             is_marker = (MARKER in data)
 
-            # slide window
-            packet_window.append((time.time(), is_marker, covert_active))
+            # slide the window of markers
+            packet_window.append((time.time(), is_marker))
             if len(packet_window) > WINDOW_SIZE:
                 packet_window.pop(0)
 
-            # once we fill a window, make a decision and record metrics
+            # once we have a full window, decide & score
             if len(packet_window) == WINDOW_SIZE:
-                decision = analyze_window()
-                # true label = majority of the window was covert-active
-                true_label = sum(1 for (_, _, lab) in packet_window) >= (WINDOW_SIZE / 2)
+                decision   = analyze_window()
+                true_label = analyze_window()  # ground-truth = actual marker presence
 
+                # update counts
                 if decision and true_label:
                     TP += 1
                 elif decision and not true_label:
@@ -81,7 +78,7 @@ async def run():
                 f1        = (2 * precision * recall / (precision + recall)
                              if (precision + recall) else 0)
 
-                # append a line to CSV
+                # append metrics row
                 with open(csv_path, "a", newline="") as f:
                     csv.writer(f).writerow([
                         time.time(), TP, FP, TN, FN,
@@ -91,7 +88,7 @@ async def run():
                     ])
                 print(f"[Detector] TP={TP} FP={FP} TN={TN} FN={FN} F1={f1:.3f}")
 
-        # then inject the random delay and forward packet
+        # forward the packet after a bit of random delay
         delay = random.uniform(0, MEAN_DELAY_MS / 1000.0)
         await asyncio.sleep(delay)
         out_topic = "outpktinsec" if msg.subject == "inpktsec" else "outpktsec"
