@@ -1,109 +1,110 @@
 #!/usr/bin/env python3
-import asyncio
 import os
-import time
-import csv
 import random
+import asyncio
+import csv
+from scapy.all import Ether, IP, Raw
 from nats.aio.client import Client as NATS
-from scapy.all import Ether, IP
+from nats.aio.msg import Msg
 
-# --- Phase 3 Heuristic Detector Parameters ---
-WINDOW_SIZE = 20
-MARKER = b"CovertChannel"  # what we look for
+# Environment flags
+MITIGATE_ACTIVE = os.getenv("MITIGATE_ACTIVE", "0") == "1"
+COVERT_ACTIVE   = os.getenv("COVERT_ACTIVE",   "0") == "1"
 
-# --- Detection Metrics Counters ---
-TP = FP = TN = FN = 0
-packet_window = []  # list of tuples: (timestamp, is_marker)
+# Metrics output
+METRICS_FILE = "/code/python-processor/TPPhase3_results/detection_metrics.csv"
+WINDOW_SIZE  = float(os.getenv("DETECTION_WINDOW", "1.0"))  # seconds
+STEP_SIZE    = float(os.getenv("DETECTION_STEP",   "0.2"))  # seconds
 
-# --- Output Setup: one timestamped subfolder per run ---
-BASE_RESULTS_DIR = "TPPhase3_results"
-timestamp = time.strftime("%Y%m%d-%H%M%S")
-results_dir = os.path.join(BASE_RESULTS_DIR, timestamp)
-os.makedirs(results_dir, exist_ok=True)
-csv_path = os.path.join(results_dir, "detection_metrics.csv")
+class PacketProcessor:
+    def __init__(self):
+        self.nc = NATS()
+        # sliding‐window counters
+        self.window_start = asyncio.get_event_loop().time()
+        self.TP = self.FP = self.TN = self.FN = 0
+        # write header
+        os.makedirs(os.path.dirname(METRICS_FILE), exist_ok=True)
+        with open(METRICS_FILE, "w") as f:
+            writer = csv.writer(f)
+            writer.writerow(["window_end","TP","FP","TN","FN","Precision","Recall","F1"])
 
-# write CSV header
-with open(csv_path, "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow([
-        "window_end", "TP", "FP", "TN", "FN", "Precision", "Recall", "F1"
-    ])
+    def _apply_mitigation(self, pkt):
+        """
+        Erase any covert‐channel data by reseeding the IP ID.
+        """
+        if MITIGATE_ACTIVE and IP in pkt:
+            pkt[IP].id = random.randint(0, 0xFFFF)
+        return pkt
 
-# (unchanged) artificial delay before forwarding
-MEAN_DELAY_MS = 200
+    def _score_packet(self, saw_covert):
+        """
+        Simple heuristic: if COVERT_ACTIVE we expect a covert‐tagged packet.
+        Here we assume 'saw_covert' is True if we detected the marker.
+        """
+        if COVERT_ACTIVE:
+            if saw_covert:
+                self.TP += 1
+            else:
+                self.FN += 1
+        else:
+            if saw_covert:
+                self.FP += 1
+            else:
+                self.TN += 1
 
-def analyze_window():
-    """Return True if *any* packet in the current window carries our marker."""
-    return any(is_marker for (_, is_marker) in packet_window)
+    def _maybe_write_metrics(self):
+        """
+        On each STEP_SIZE, dump a new line of metrics.
+        """
+        now = asyncio.get_event_loop().time()
+        if now - self.window_start >= STEP_SIZE:
+            precision = self.TP / (self.TP + self.FP) if (self.TP + self.FP) else 1.0
+            recall    = self.TP / (self.TP + self.FN) if (self.TP + self.FN) else 1.0
+            f1        = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+            with open(METRICS_FILE, "a") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    self.window_start + WINDOW_SIZE,
+                    self.TP, self.FP, self.TN, self.FN,
+                    round(precision, 3),
+                    round(recall,    3),
+                    round(f1,        3)
+                ])
+            # slide window
+            self.window_start += STEP_SIZE
+            # reset counts for next window
+            self.TP = self.FP = self.TN = self.FN = 0
 
-async def run():
-    global TP, FP, TN, FN, packet_window
+    async def _handle_upstream(self, msg: Msg):
+        pkt = Ether(msg.data)
+        # 1) Mitigate if requested
+        pkt = self._apply_mitigation(pkt)
+        # 2) Detection: look for your covert marker
+        saw_covert = Raw in pkt and b"CovertChannel" in bytes(pkt[Raw].load)
+        self._score_packet(saw_covert)
+        self._maybe_write_metrics()
+        # 3) Forward packet on
+        await self.nc.publish("to-insec", bytes(pkt))
 
-    nc = NATS()
-    nats_url = os.getenv("NATS_SURVEYOR_SERVERS", "nats://nats:4222")
-    await nc.connect(nats_url)
+    async def _handle_downstream(self, msg: Msg):
+        pkt = Ether(msg.data)
+        pkt = self._apply_mitigation(pkt)
+        saw_covert = Raw in pkt and b"CovertChannel" in bytes(pkt[Raw].load)
+        self._score_packet(saw_covert)
+        self._maybe_write_metrics()
+        await self.nc.publish("to-sec", bytes(pkt))
 
-    async def message_handler(msg):
-        nonlocal nc
-        global TP, FP, TN, FN, packet_window
+async def main():
+    proc = PacketProcessor()
+    nc = proc.nc
+    await nc.connect(os.getenv("NATS_URL", "nats://127.0.0.1:4222"))
 
-        data = msg.data
-        pkt = Ether(data)
+    # subscribe to directions
+    await nc.subscribe("sec-to-processor", cb=proc._handle_upstream)
+    await nc.subscribe("insec-to-processor", cb=proc._handle_downstream)
 
-        if IP in pkt:
-            is_marker = (MARKER in data)
-
-            # slide the window of markers
-            packet_window.append((time.time(), is_marker))
-            if len(packet_window) > WINDOW_SIZE:
-                packet_window.pop(0)
-
-            # once we have a full window, decide & score
-            if len(packet_window) == WINDOW_SIZE:
-                decision   = analyze_window()
-                true_label = analyze_window()  # ground-truth = actual marker presence
-
-                # update counts
-                if decision and true_label:
-                    TP += 1
-                elif decision and not true_label:
-                    FP += 1
-                elif not decision and not true_label:
-                    TN += 1
-                else:
-                    FN += 1
-
-                precision = TP / (TP + FP) if (TP + FP) else 0
-                recall    = TP / (TP + FN) if (TP + FN) else 0
-                f1        = (2 * precision * recall / (precision + recall)
-                             if (precision + recall) else 0)
-
-                # append metrics row
-                with open(csv_path, "a", newline="") as f:
-                    csv.writer(f).writerow([
-                        time.time(), TP, FP, TN, FN,
-                        round(precision, 3),
-                        round(recall,    3),
-                        round(f1,        3)
-                    ])
-                print(f"[Detector] TP={TP} FP={FP} TN={TN} FN={FN} F1={f1:.3f}")
-
-        # forward the packet after a bit of random delay
-        delay = random.uniform(0, MEAN_DELAY_MS / 1000.0)
-        await asyncio.sleep(delay)
-        out_topic = "outpktinsec" if msg.subject == "inpktsec" else "outpktsec"
-        await nc.publish(out_topic, data)
-
-    # subscribe to both directions
-    await nc.subscribe("inpktsec",   cb=message_handler)
-    await nc.subscribe("inpktinsec", cb=message_handler)
-    print("Processor + Detector subscribed; running…")
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        print("Shutting down…")
-        await nc.close()
+    # run forever
+    await asyncio.get_event_loop().create_future()
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    asyncio.run(main())
