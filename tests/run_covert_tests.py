@@ -8,11 +8,12 @@ import matplotlib.pyplot as plt
 import os
 
 # Ensure the output directory exists.
-output_dir = "TPPhase2_results"
+output_dir = os.path.join("complete_test", "TPPhase2_results")
 os.makedirs(output_dir, exist_ok=True)
 
 # List of inter-packet interval values (in seconds) to test.
 intervals = [0.5, 1.0, 1.5, 2.0]
+#intervals = [0.5]
 num_trials = 5
 
 # The covert message to send.
@@ -128,7 +129,7 @@ if results:
     plt.grid(True)
     plot_path = os.path.join(output_dir, "covert_channel_capacity.png")
     plt.savefig(plot_path)
-    plt.show()
+    plt.show(block=False)  # Show the plot without blocking
     print(f"Plot saved to {plot_path}")
 else:
     print("No results to plot.")
