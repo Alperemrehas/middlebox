@@ -71,7 +71,7 @@ def run_capacity_test(mitigate_mode, run_dir):
                 recv_stdout, recv_stderr = recv_proc.communicate(timeout=10)
             except subprocess.TimeoutExpired:
                 recv_proc.kill()
-            # (you can log recv_stdout if desired)
+    
 
             # 5) Compute capacity
             cap = BITS/elapsed if elapsed > 0 else 0.0

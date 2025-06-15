@@ -7,7 +7,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 
 # --- Configuration ---
-PHASE2_CSV = "TPPhase2_results/covert_channel_results.csv"
+PHASE2_CSV = "complete_results/Phase2_Covert_Channel_Capacity/covert_channel_capacity.png"
 PHASE3_ROOT = "TPPhase3_results"
 WINDOW_SLEEP = 30  # seconds
 PING_CMD = ["docker","exec","sec","bash","-lc","ping -i 0.1 -c 300 10.0.0.21"]
@@ -25,9 +25,9 @@ if not os.path.isfile(PHASE2_CSV):
     exit(1)
 
 # create a single timestamped folder, then subfolders "0/" and "1/"
-base_ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-base_dir = os.path.join(PHASE3_ROOT, base_ts)
-os.makedirs(base_dir, exist_ok=True)
+#base_ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+base_dir = PHASE3_ROOT
+os.makedirs(PHASE3_ROOT, exist_ok=True)
 
 print("\n=== Phase 3 Detection Tests ===")
 for mode in ("0", "1"):
