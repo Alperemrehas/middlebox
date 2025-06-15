@@ -63,7 +63,7 @@ for interval in intervals:
         time.sleep(2)
         elapsed, sender_log = run_covert_sender(interval)
 
-        # ... (rest of the file is unchanged, using the corrected `output_dir`)
+        # Ensure the receiver is still running before sending the message
         sender_log_filename = f"sent_interval_{interval}_trial_{trial}.txt"
         sender_log_path = os.path.join(output_dir, sender_log_filename)
         with open(sender_log_path, "w") as f:
