@@ -7,12 +7,14 @@ import os
 
 # List of mean delays (in milliseconds) to test.
 mean_delays = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 200]
-#mean_delays = [10, 20]
-
 results = []
 
 # Path to the python processor file.
 processor_file = "code/python-processor/main.py"
+
+
+# Standardized output directory name at the top level.
+OUTPUT_DIR = "TPPhase1_results"
 
 def update_mean_delay(new_delay):
     """Update the MEAN_DELAY_MS value in the processor file."""
@@ -51,6 +53,10 @@ def parse_avg_rtt(ping_output):
         return float(match.group(1))
     return None
 
+
+# Ensure the standard output directory exists.
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 for delay in mean_delays:
     print(f"\nTesting with MEAN_DELAY_MS = {delay}")
     update_mean_delay(delay)
@@ -67,12 +73,9 @@ for delay in mean_delays:
     
     time.sleep(5)
 
-# Ensure the directory structure exists
-output_dir = os.path.join("complete_test", "TPPhase1_results")
-os.makedirs(output_dir, exist_ok=True)
 
-# Save results to CSV in the specified directory
-output_file = os.path.join(output_dir, "rtt_results.csv")
+# Save results to CSV in the standard directory
+output_file = os.path.join(OUTPUT_DIR, "rtt_results.csv")
 with open(output_file, "w", newline="") as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(["Mean Delay (ms)", "Average RTT (ms)"])
@@ -87,7 +90,7 @@ if results:
     plt.title("Impact of Random Delay on Ping RTT")
     plt.grid(True)
     # Save the figure to the same directory
-    figure_file = os.path.join(output_dir, "rtt_vs_delay.png")
+    figure_file = os.path.join(OUTPUT_DIR, "rtt_vs_delay.png")
     plt.savefig(figure_file)
     plt.show(block=False)  # Show the plot without blocking
 else:

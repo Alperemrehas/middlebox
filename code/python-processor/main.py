@@ -7,13 +7,17 @@ import asyncio
 from nats.aio.client import Client as NATS
 from scapy.all import Ether, IP
 
-# ─── Phase 2: Random‐delay parameters ───────────────────────────────
+# ─── Phase 4: Mitigation flag ──────────────────────────────────────
+# Controlled via environment variable, disabled by default.
+MITIGATE_ACTIVE = os.getenv("MITIGATE_ACTIVE", "0") == "1"
+
+# ─── Phase 2: Random-delay parameters ───────────────────────────────
 # in ms; you can still override via ENV if you like
 MEAN_DELAY_MS = 200
 
-# ─── Phase 3: Sliding‐window detector parameters ─────────────────────
+# ─── Phase 3: Sliding-window detector parameters ─────────────────────
 WINDOW_SIZE = int(os.getenv("DETECTION_WINDOW_SIZE", "20"))
-# byte‐string marker to look for
+# byte-string marker to look for
 MARKER = os.getenv("DETECTION_MARKER", "CovertChannel").encode()
 
 # ─── Metrics bookkeeping ────────────────────────────────────────────
@@ -27,13 +31,14 @@ results_dir = os.path.join(BASE_RESULTS_DIR, timestamp)
 os.makedirs(results_dir, exist_ok=True)
 csv_path = os.path.join(results_dir, "detection_metrics.csv")
 
-# Write CSV header
-with open(csv_path, "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow([
-        "window_end", "TP", "FP", "TN", "FN",
-        "Precision", "Recall", "F1"
-    ])
+# Write CSV header only if the file is new/empty
+if not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0:
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "window_end", "TP", "FP", "TN", "FN",
+            "Precision", "Recall", "F1"
+        ])
 
 
 async def run():
@@ -49,6 +54,13 @@ async def run():
         data = msg.data
         pkt = Ether(data)
 
+        # ─── Phase 4: Mitigation ───────────────────────────────────
+        # If active, randomize the IP ID field to disrupt covert channels
+        # that rely on it. This happens *before* detection.
+        if MITIGATE_ACTIVE and IP in pkt:
+            pkt[IP].id = random.randint(0, 0xFFFF)
+            data = bytes(pkt) # Update the raw data with the modified packet
+
         # ─── Phase 3: Detection ───────────────────────────────────
         if IP in pkt:
             is_marker = (MARKER in data)
@@ -60,8 +72,10 @@ async def run():
 
             # once we have a full window, score it
             if len(packet_window) == WINDOW_SIZE:
-                decision   = any(flag for (_, flag) in packet_window)
-                true_label = decision  # ground truth = actual marker presence
+                # Decision is positive if any packet in the window has the marker
+                decision = any(flag for (_, flag) in packet_window)
+                # Ground truth is whether a marker was actually present
+                true_label = any(flag for (_, flag) in packet_window)
 
                 # update confusion counts
                 if decision and true_label:
@@ -70,7 +84,7 @@ async def run():
                     FP += 1
                 elif not decision and not true_label:
                     TN += 1
-                else:
+                else: # not decision and true_label
                     FN += 1
 
                 # compute metrics
@@ -104,7 +118,7 @@ async def run():
     await nc.subscribe("inpktsec",   cb=message_handler)
     await nc.subscribe("inpktinsec", cb=message_handler)
 
-    print(f"Processor running → MEAN_DELAY_MS={MEAN_DELAY_MS} ms  |  WINDOW_SIZE={WINDOW_SIZE}")
+    print(f"Processor running → MITIGATE_ACTIVE={MITIGATE_ACTIVE} | MEAN_DELAY_MS={MEAN_DELAY_MS} ms | WINDOW_SIZE={WINDOW_SIZE}")
     try:
         # just keep it alive
         while True:

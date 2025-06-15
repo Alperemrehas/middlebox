@@ -7,8 +7,8 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 
 # --- Configuration ---
-PHASE2_CSV = "complete_test/TPPhase2_results/covert_channel_results.csv"
-PHASE3_ROOT = "complete_test/TPPhase3_results"
+PHASE2_CSV = "complete_results/Phase2_Covert_Channel_Capacity/covert_channel_capacity.png"
+PHASE3_ROOT = "TPPhase3_results"
 WINDOW_SLEEP = 30  # seconds
 PING_CMD = ["docker","exec","sec","bash","-lc","ping -i 0.1 -c 300 10.0.0.21"]
 SENDER_CMD = [

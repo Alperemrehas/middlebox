@@ -7,13 +7,13 @@ import statistics
 import matplotlib.pyplot as plt
 import os
 
-# Ensure the output directory exists.
-output_dir = os.path.join("complete_test", "TPPhase2_results")
+
+# Standardized output directory name.
+output_dir = "TPPhase2_results"
 os.makedirs(output_dir, exist_ok=True)
 
 # List of inter-packet interval values (in seconds) to test.
 intervals = [0.5, 1.0, 1.5, 2.0]
-#intervals = [0.5]
 num_trials = 5
 
 # The covert message to send.
@@ -22,10 +22,7 @@ message_length_bits = len(covert_message) * 8
 receiver_count = len(covert_message)
 
 def run_covert_sender(interval):
-    """
-    Calls the covert sender with the given inter-packet interval.
-    Returns a tuple: (elapsed time in seconds, sender output log).
-    """
+    
     cmd = [
         "docker", "exec", "sec", "python3",
         "/code/sec/covert_sender.py",
@@ -63,40 +60,34 @@ for interval in intervals:
         print(f"Starting covert receiver to capture {receiver_count} packets...")
         receiver_proc = subprocess.Popen(receiver_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        # Give the receiver a brief head start
         time.sleep(2)
-
-        # Run sender
         elapsed, sender_log = run_covert_sender(interval)
 
-        # Save sender log
+        # ... (rest of the file is unchanged, using the corrected `output_dir`)
         sender_log_filename = f"sent_interval_{interval}_trial_{trial}.txt"
         sender_log_path = os.path.join(output_dir, sender_log_filename)
         with open(sender_log_path, "w") as f:
             f.write(sender_log)
         print(f"Sender log saved to {sender_log_path}")
 
-        # Wait for receiver to complete
         try:
-            receiver_stdout, receiver_stderr = receiver_proc.communicate(timeout=20)
+            # Increased timeout to prevent premature process killing
+            receiver_stdout, receiver_stderr = receiver_proc.communicate(timeout=60)
             receiver_log = receiver_stdout + ("\nError: " + receiver_stderr if receiver_stderr else "")
         except subprocess.TimeoutExpired:
             receiver_proc.kill()
             receiver_log = "Error: Receiver command timed out."
             print(receiver_log)
 
-        # Save receiver log
         receiver_log_filename = f"received_interval_{interval}_trial_{trial}.txt"
         receiver_log_path = os.path.join(output_dir, receiver_log_filename)
         with open(receiver_log_path, "w") as f:
             f.write(receiver_log)
         print(f"Receiver log saved to {receiver_log_path}")
 
-        # Calculate capacity
         capacity = message_length_bits / elapsed if elapsed > 0 else 0
         print(f"Elapsed time: {elapsed:.3f} sec, Capacity: {capacity:.2f} bps")
         capacities.append(capacity)
-
         time.sleep(5)
 
     trial_results[interval] = capacities
@@ -107,7 +98,6 @@ for interval in intervals:
     upper_ci = avg + error_margin
     results.append((interval, avg, lower_ci, upper_ci))
 
-# Save summary results to CSV
 csv_path = os.path.join(output_dir, "covert_channel_results.csv")
 with open(csv_path, "w", newline="") as csvfile:
     writer = csv.writer(csvfile)
@@ -115,7 +105,6 @@ with open(csv_path, "w", newline="") as csvfile:
     writer.writerows(results)
 print(f"CSV results saved to {csv_path}")
 
-# Plot results
 if results:
     intervals_plot, avg_capacities, lower_cis, upper_cis = zip(*results)
     error_bars = [
@@ -129,7 +118,7 @@ if results:
     plt.grid(True)
     plot_path = os.path.join(output_dir, "covert_channel_capacity.png")
     plt.savefig(plot_path)
-    plt.show(block=False)  # Show the plot without blocking
+    plt.show(block=False)
     print(f"Plot saved to {plot_path}")
 else:
     print("No results to plot.")
